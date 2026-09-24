@@ -1,7 +1,7 @@
 streamlit>=1.32.0
 crewai>=0.20.0
 crewai-tools>=0.1.0
-chromadb>=0.5.0
+chromadb>=1.5.4,<2
 bcrypt>=4.1.0
 python-dotenv>=1.0.0
 openai>=2.15.0
