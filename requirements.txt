@@ -1,5 +1,5 @@
 streamlit==1.40.0
-rich<14
+rich==13.9.4
 crewai[tools]==1.5.0
 chromadb==1.5.4
 pysqlite3-binary
