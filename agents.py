@@ -51,7 +51,7 @@ def get_crew():
     os.environ["OPENAI_BASE_URL"] = "https://api.groq.com/openai/v1"
 
     llm = LLM(
-        model="groq/moonshotai/kimi-k2-instruct-0905",
+        model="groq/qwen/qwen3.6-27b",
         api_key=GROQ_KEY,
         temperature=0.1,
         max_tokens=300,
