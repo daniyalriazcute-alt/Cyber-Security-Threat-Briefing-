@@ -1,4 +1,3 @@
-```python
 import os
 
 from crewai import Agent, Task, Crew, Process, LLM
@@ -198,5 +197,5 @@ def get_crew():
         verbose=False,
         memory=False,
     )
-```
+
 
