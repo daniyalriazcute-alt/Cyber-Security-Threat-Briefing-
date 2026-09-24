@@ -1,6 +1,7 @@
 import os
 import re
 import requests
+from datetime import datetime, timezone
 from crewai import Agent, Task, Crew, Process, LLM
 from crewai.tools import tool
 
@@ -16,16 +17,20 @@ RULES:
 4. Do not invent CVEs, scores, or remediation details.
 """
 
-# Known vulnerability alias mappings
+# ============================================================
+# MAPPINGS & ACRONYMS
+# ============================================================
+
 ALIAS_MAP = {
     "mongobleed": "CVE-2025-14847",
     "react2shell": "CVE-2025-55182",
     "log4shell": "CVE-2021-44228",
     "heartbleed": "CVE-2014-0160",
     "eternalblue": "CVE-2017-0144",
+    "proxylogon": "CVE-2021-26855",
+    "proxyshell": "CVE-2021-34473",
 }
 
-# Common acronyms mapped to official NVD search terms
 KEYWORD_MAP = {
     "xss": "cross site scripting",
     "sqli": "sql injection",
@@ -35,14 +40,14 @@ KEYWORD_MAP = {
 }
 
 # ============================================================
-# NVD CVE LOOKUP TOOL WITH QUERY CLEANING
+# LIVE NVD CVE LOOKUP TOOL WITH DATE BOUNDARIES & CLEANING
 # ============================================================
 
 @tool("nvd_cve_lookup")
 def fetch_cve_data(query: str) -> str:
     """
     Look up live CVE information from NIST NVD API.
-    Cleans natural language input into precise API keywords.
+    Handles direct CVE IDs, aliases, conversational queries, and date bounds.
     """
     raw_query = query.strip()
     clean_query = raw_query.lower()
@@ -64,7 +69,7 @@ def fetch_cve_data(query: str) -> str:
     year_match = re.search(r"\b(202[0-6])\b", clean_query)
     target_year = year_match.group(1) if year_match else None
 
-    # 4. Strip conversational filler phrasing to extract pure search keywords
+    # 4. Strip conversational filler phrasing to isolate pure search keywords
     filler_patterns = [
         r"\bshow me\b", r"\bgive me\b", r"\bfind me\b", r"\bone\b", r"\btwo\b", 
         r"\bthree\b", r"\bany\b", r"\bof\b", r"\ba\b", r"\ban\b", r"\bthe\b", 
@@ -78,31 +83,28 @@ def fetch_cve_data(query: str) -> str:
     
     keyword_search = keyword_search.strip()
     if not keyword_search:
-        keyword_search = "wordpress"  # Sensible default if stripped empty
+        keyword_search = "wordpress"  # Fallback default keyword
 
     # Expand shorthand acronyms
     keyword_search = KEYWORD_MAP.get(keyword_search, keyword_search)
 
     # Build primary query URL
-    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={keyword_search}&resultsPerPage=10"
+    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={keyword_search}&resultsPerPage=20"
     return _execute_nvd_request(url, raw_query, year_filter=target_year)
 
 
 def _execute_nvd_request(url: str, original_query: str, year_filter: str = None) -> str:
     try:
+        # Enforce date boundaries on keyword queries to prevent 2002 historical records
+        if "cveId=" not in url:
+            start_year = year_filter if year_filter else "2025"
+            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000")
+            url += f"&pubStartDate={start_year}-01-01T00:00:00.000&pubEndDate={now_iso}"
+
         response = requests.get(url, timeout=12)
         if response.status_code == 200:
             data = response.json()
             vulnerabilities = data.get("vulnerabilities", [])
-
-            # Filter by target year if specified
-            if year_filter and vulnerabilities:
-                filtered = [
-                    v for v in vulnerabilities 
-                    if v.get("cve", {}).get("id", "").startswith(f"CVE-{year_filter}")
-                ]
-                if filtered:
-                    vulnerabilities = filtered
 
             if not vulnerabilities:
                 return f"No official CVE results found matching '{original_query}'."
@@ -147,7 +149,7 @@ def _execute_nvd_request(url: str, original_query: str, year_filter: str = None)
         return f"Error querying NVD API: {str(e)}"
 
 # ============================================================
-# OUTPUT FORMAT
+# MANDATORY OUTPUT FORMAT
 # ============================================================
 
 OUTPUT_SCHEMA = """
