@@ -12,7 +12,7 @@ import traceback
 import pandas as pd
 from dotenv import load_dotenv
 from auth_utils import init_db, register_user, login_user
-from agents import threat_crew, research_task, report_task
+from agents import get_crew
 from styles import load_css
 
 load_dotenv()
@@ -219,11 +219,8 @@ else:
         )
         try:
             with st.spinner("Agents are collaborating..."):
-                research_task.description = (
-                    f"Use the NVD CVE Lookup tool to find 2-3 critical CVEs "
-                    f"related to '{topic_value}'. Extract raw facts only."
-                )
-                result = threat_crew.kickoff(inputs={'topic': topic_value})
+                crew = get_crew()
+                result = crew.kickoff(inputs={'topic': topic_value})
 
             raw = str(result.raw) if hasattr(result, 'raw') else str(result)
             final_text = "\n".join(
