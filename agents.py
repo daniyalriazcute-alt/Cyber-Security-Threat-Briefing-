@@ -5,7 +5,7 @@ from crewai_tools import tool
 # --- GROQ LLM INITIALIZATION ---
 # Using the free Groq endpoint as requested [citation:4][citation:12]
 llm = LLM(
-    model="groq/llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     api_key=os.environ.get("GROQ_API_KEY"),
     temperature=0.1,
     max_tokens=512, # Limits output to "short and concise" as requested
