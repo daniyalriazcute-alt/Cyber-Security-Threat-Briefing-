@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 from crewai import Agent, Task, Crew, Process, LLM
 from crewai.tools import tool
@@ -15,55 +16,133 @@ RULES:
 4. Do not invent CVEs, scores, or remediation details.
 """
 
+# Known vulnerability alias mappings
+ALIAS_MAP = {
+    "mongobleed": "CVE-2025-14847",
+    "react2shell": "CVE-2025-55182",
+    "log4shell": "CVE-2021-44228",
+    "heartbleed": "CVE-2014-0160",
+    "eternalblue": "CVE-2017-0144",
+}
+
+# Common acronyms mapped to official NVD search terms
+KEYWORD_MAP = {
+    "xss": "cross site scripting",
+    "sqli": "sql injection",
+    "rce": "remote code execution",
+    "ssrf": "server side request forgery",
+    "idor": "direct object reference"
+}
+
 # ============================================================
-# LIVE NVD CVE LOOKUP TOOL
+# NVD CVE LOOKUP TOOL WITH QUERY CLEANING
 # ============================================================
 
 @tool("nvd_cve_lookup")
 def fetch_cve_data(query: str) -> str:
     """
-    Look up live CVE information from the NIST National Vulnerability Database API.
+    Look up live CVE information from NIST NVD API.
+    Cleans natural language input into precise API keywords.
     """
-    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={query}"
+    raw_query = query.strip()
+    clean_query = raw_query.lower()
+
+    # 1. Check alias dictionary
+    for alias, cve_id in ALIAS_MAP.items():
+        if alias in clean_query:
+            clean_query = cve_id.lower()
+            break
+
+    # 2. Check if query contains a specific CVE ID
+    cve_match = re.search(r"cve-\d{4}-\d{4,7}", clean_query, re.IGNORECASE)
+    if cve_match:
+        target_cve = cve_match.group(0).upper()
+        url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={target_cve}"
+        return _execute_nvd_request(url, raw_query)
+
+    # 3. Extract year if specified (e.g. 2026, 2025)
+    year_match = re.search(r"\b(202[0-6])\b", clean_query)
+    target_year = year_match.group(1) if year_match else None
+
+    # 4. Strip conversational filler phrasing to extract pure search keywords
+    filler_patterns = [
+        r"\bshow me\b", r"\bgive me\b", r"\bfind me\b", r"\bone\b", r"\btwo\b", 
+        r"\bthree\b", r"\bany\b", r"\bof\b", r"\ba\b", r"\ban\b", r"\bthe\b", 
+        r"\bvulnerabilities\b", r"\bvulnerability\b", r"\bflaw\b", r"\bflaws\b",
+        r"\b202[0-6]\b", r"\bcve\b"
+    ]
     
+    keyword_search = clean_query
+    for pattern in filler_patterns:
+        keyword_search = re.sub(pattern, "", keyword_search)
+    
+    keyword_search = keyword_search.strip()
+    if not keyword_search:
+        keyword_search = "wordpress"  # Sensible default if stripped empty
+
+    # Expand shorthand acronyms
+    keyword_search = KEYWORD_MAP.get(keyword_search, keyword_search)
+
+    # Build primary query URL
+    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={keyword_search}&resultsPerPage=10"
+    return _execute_nvd_request(url, raw_query, year_filter=target_year)
+
+
+def _execute_nvd_request(url: str, original_query: str, year_filter: str = None) -> str:
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=12)
         if response.status_code == 200:
             data = response.json()
-            vulnerabilities = data.get("vulnerabilities", [])[:3]  # Take top 3 CVEs
-            
-            if not vulnerabilities:
-                return f"No official CVE results found for topic '{query}'."
+            vulnerabilities = data.get("vulnerabilities", [])
 
-            cve_summary = [f"NVD Live API results for '{query}':\n"]
+            # Filter by target year if specified
+            if year_filter and vulnerabilities:
+                filtered = [
+                    v for v in vulnerabilities 
+                    if v.get("cve", {}).get("id", "").startswith(f"CVE-{year_filter}")
+                ]
+                if filtered:
+                    vulnerabilities = filtered
+
+            if not vulnerabilities:
+                return f"No official CVE results found matching '{original_query}'."
+
+            # Sort by publish date descending (newest first)
+            vulnerabilities.sort(
+                key=lambda x: x.get("cve", {}).get("published", ""), 
+                reverse=True
+            )
+
+            # Limit output to top 3 matching CVEs
+            vulnerabilities = vulnerabilities[:3]
+            cve_summary = [f"NVD Live API results for '{original_query}':\n"]
+
             for item in vulnerabilities:
                 cve = item.get("cve", {})
                 cve_id = cve.get("id", "N/A")
-                
-                # Fetch English description
+
                 descriptions = cve.get("descriptions", [])
                 desc_text = "No description available."
                 for d in descriptions:
                     if d.get("lang") == "en":
                         desc_text = d.get("value", "")
                         break
-                
-                # Fetch CVSS severity score if available
+
                 metrics = cve.get("metrics", {})
                 cvss_score = "N/A"
                 if "cvssMetricV31" in metrics:
                     cvss_score = metrics["cvssMetricV31"][0]["cvssData"].get("baseScore", "N/A")
+                elif "cvssMetricV40" in metrics:
+                    cvss_score = metrics["cvssMetricV40"][0]["cvssData"].get("baseScore", "N/A")
                 elif "cvssMetricV2" in metrics:
                     cvss_score = metrics["cvssMetricV2"][0]["cvssData"].get("baseScore", "N/A")
 
                 cve_summary.append(
                     f"{cve_id} | CVSS: {cvss_score} | Description: {desc_text[:120]}..."
                 )
-                
+
             return "\n\n".join(cve_summary)
-        else:
-            return f"NVD API returned status code {response.status_code}."
-            
+        return f"NVD API returned status code {response.status_code}."
     except Exception as e:
         return f"Error querying NVD API: {str(e)}"
 
@@ -72,7 +151,7 @@ def fetch_cve_data(query: str) -> str:
 # ============================================================
 
 OUTPUT_SCHEMA = """
-For EACH CVE, output EXACTLY these 5 lines:
+For EACH CVE found, output EXACTLY these 5 lines:
 
 CVE ID: <id>
 Summary: <one line, max 15 words>
@@ -80,9 +159,15 @@ Impact: <one line, max 12 words>
 Exploit PoC: <public / not public / link>
 Recommended Action: <one line, max 10 words>
 
-Separate multiple CVEs with one blank line.
-Do not add headings, introductions, conclusions, or tables.
-Total output must be under 120 words.
+If NO results were found, output EXACTLY this format:
+
+CVE ID: N/A
+Summary: No matching CVE records found for this query.
+Impact: None identified.
+Exploit PoC: not public
+Recommended Action: Try adjusting search terms or year parameters.
+
+Do NOT include 'Thought:', intros, or extra lines.
 """
 
 # ============================================================
@@ -98,9 +183,6 @@ def get_crew():
             "Please add GROQ_API_KEY to environment variables or Streamlit Secrets."
         )
 
-    # --------------------------------------------------------
-    # LLM Initialization for gpt-oss-120b on Groq
-    # --------------------------------------------------------
     llm = LLM(
         model="groq/openai/gpt-oss-120b",
         api_key=groq_key,
@@ -110,9 +192,6 @@ def get_crew():
         timeout=60,
     )
 
-    # --------------------------------------------------------
-    # VEGA - CVE RESEARCHER
-    # --------------------------------------------------------
     researcher = Agent(
         role="CVE Researcher",
         goal="Fetch live vulnerability data using the nvd_cve_lookup tool.",
@@ -131,16 +210,13 @@ def get_crew():
         memory=False,
     )
 
-    # --------------------------------------------------------
-    # ORION - RISK REPORTER
-    # --------------------------------------------------------
     reporter = Agent(
         role="Risk Reporter",
         goal="Format raw CVE output into the mandatory 5-line schema.",
         backstory=(
             "You are Orion, a risk analyst. "
             "Format the raw CVE data provided by Vega according to the output schema. "
-            "Do not call tools or perform additional research.\n"
+            "Do not output 'Thought:' lines or internal commentary.\n"
             + SECURITY_GUARDRAILS
         ),
         verbose=False,
@@ -151,9 +227,6 @@ def get_crew():
         memory=False,
     )
 
-    # --------------------------------------------------------
-    # TASKS
-    # --------------------------------------------------------
     research_task = Task(
         description=(
             "Call the tool nvd_cve_lookup with query parameter '{topic}'. "
@@ -173,9 +246,6 @@ def get_crew():
         context=[research_task],
     )
 
-    # --------------------------------------------------------
-    # CREW
-    # --------------------------------------------------------
     return Crew(
         agents=[researcher, reporter],
         tasks=[research_task, report_task],
