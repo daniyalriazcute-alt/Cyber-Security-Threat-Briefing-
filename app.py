@@ -5,19 +5,12 @@ from dotenv import load_dotenv
 from auth_utils import init_db, register_user, login_user
 from agents import threat_crew, research_task, report_task
 from styles import load_css
-from db_utils import get_agent_memory
 
 # Load environment variables
 load_dotenv()
 
 # --- INITIALIZATION ---
 init_db()
-# Initialize ChromaDB memory (this will trigger if not exists)
-# Note: In CrewAI, memory setup is handled by the Crew class. 
-# We just ensure the persistent directory exists.
-if not os.path.exists("./agent_memory"):
-    os.makedirs("./agent_memory")
-
 st.set_page_config(page_title="Cyber Threat Briefing", layout="wide", initial_sidebar_state="collapsed")
 
 # --- SESSION STATE ---
@@ -29,14 +22,18 @@ if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'running_crew' not in st.session_state:
     st.session_state.running_crew = False
+if 'agent_status' not in st.session_state:
+    st.session_state.agent_status = {"vega": "Idle", "orion": "Idle"}
 
 # Load CSS based on theme
 load_css(st.session_state.theme)
 
-# --- SIDEBAR CONTROLS ---
+# --- SIDEBAR (Only visible when logged in) ---
 if st.session_state.logged_in:
     with st.sidebar:
-        st.title("Settings")
+        st.markdown(f"### Welcome, {st.session_state.get('username', 'User')}")
+        st.divider()
+        
         # Dark/Light mode toggle
         theme_toggle = st.toggle("Dark Mode", value=(st.session_state.theme == "dark"))
         if theme_toggle != (st.session_state.theme == "dark"):
@@ -44,14 +41,12 @@ if st.session_state.logged_in:
             st.rerun()
         
         st.divider()
-        # End Chat / Clear Memory
-        if st.button("End Chat & Clear Memory", type="secondary"):
-            # Clear session state
+        
+        # Logout Button
+        if st.button("Logout", type="secondary"):
+            st.session_state.logged_in = False
             st.session_state.chat_history = []
-            st.session_state.running_crew = False
-            # In a real scenario, we would clear the ChromaDB collection here or via a tool.
-            st.success("Chat ended and memory cleared.")
-            time.sleep(1)
+            st.session_state.username = ""
             st.rerun()
 
 # --- LOGIN / REGISTRATION VIEW ---
@@ -59,6 +54,7 @@ if not st.session_state.logged_in:
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
+        # We wrap in a div with class 'login-box' to apply CSS
         st.markdown('<div class="login-box">', unsafe_allow_html=True)
         
         tab1, tab2 = st.tabs(["Login", "Register"])
@@ -69,7 +65,6 @@ if not st.session_state.logged_in:
                 username = st.text_input("Username", placeholder="Enter your username")
                 password = st.text_input("Password", type="password", placeholder="Enter your password")
                 
-                # Company-style Red Warning
                 st.markdown('<div class="company-warning">⚠️ Demo Project: Do not use real credentials. This is a security research prototype.</div>', unsafe_allow_html=True)
                 
                 submitted = st.form_submit_button("LOGIN", use_container_width=True)
@@ -85,6 +80,7 @@ if not st.session_state.logged_in:
             st.subheader("Register")
             with st.form("register_form"):
                 new_user = st.text_input("New Username")
+                new_email = st.text_input("Email Address")
                 new_pass = st.text_input("New Password", type="password")
                 confirm_pass = st.text_input("Confirm Password", type="password")
                 
@@ -96,8 +92,10 @@ if not st.session_state.logged_in:
                         st.error("Passwords do not match.")
                     elif len(new_pass) < 6:
                         st.error("Password must be at least 6 characters.")
+                    elif "@" not in new_email:
+                        st.error("Please enter a valid email address.")
                     else:
-                        if register_user(new_user, new_pass):
+                        if register_user(new_user, new_email, new_pass):
                             st.success("Account created! Please log in.")
                         else:
                             st.error("Username already exists.")
@@ -111,22 +109,22 @@ else:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("""
+        st.markdown(f"""
         <div class="agent-card">
-            <h3>Researcher Agent</h3>
-            <p style="font-size: 0.9em; opacity: 0.8;">Role: CVE Researcher</p>
-            <p style="font-size: 0.9em; opacity: 0.8;">Goal: Fetching NVD data...</p>
-            <span class="badge-done">Ready</span>
+            <img src="https://img.freepik.com/premium-photo/cyborg-head-artificial-intelligence-concept-3d-rendering_1046038-15570.jpg" class="agent-avatar">
+            <h3>Vega</h3>
+            <p style="font-size: 0.9em; opacity: 0.8;">CVE Researcher</p>
+            <span class="badge-{st.session_state.agent_status['vega'].lower()}">{st.session_state.agent_status['vega']}</span>
         </div>
         """, unsafe_allow_html=True)
 
     with col2:
-        st.markdown("""
+        st.markdown(f"""
         <div class="agent-card">
-            <h3>Reporter Agent</h3>
-            <p style="font-size: 0.9em; opacity: 0.8;">Role: Risk Reporter</p>
-            <p style="font-size: 0.9em; opacity: 0.8;">Goal: Summarizing findings...</p>
-            <span class="badge-writing">Idle</span>
+            <img src="https://img.freepik.com/premium-photo/3d-rendering-cyborg-woman-futuristic-style_1046038-15458.jpg" class="agent-avatar">
+            <h3>Orion</h3>
+            <p style="font-size: 0.9em; opacity: 0.8;">Risk Reporter</p>
+            <span class="badge-{st.session_state.agent_status['orion'].lower()}">{st.session_state.agent_status['orion']}</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -134,7 +132,7 @@ else:
 
     # --- Input Section ---
     st.subheader("Threat Focus")
-    topic = st.text_input("Enter a topic (e.g., 'Microsoft Exchange', 'Apache Log4j', 'Critical Infrastructure'):", 
+    topic = st.text_input("Enter a topic (e.g., 'Microsoft Exchange', 'Apache Log4j'):", 
                           value="Recent Critical Vulnerabilities",
                           key="threat_topic")
     
@@ -143,36 +141,43 @@ else:
             st.warning("Please enter a topic.")
         else:
             st.session_state.running_crew = True
-            st.info("Initializing agents... This may take a moment.")
+            st.session_state.agent_status = {"vega": "Writing", "orion": "Idle"}
+            st.rerun() # Rerun to show 'Writing' status
             
-            # Placeholder for the output
-            output_placeholder = st.empty()
-            
+            # Note: The actual crew execution happens below, but we need to handle UI updates.
+            # For simplicity in Streamlit, we'll just run it synchronously here.
             try:
-                # Update Task descriptions with the user topic
-                # In a real app, you'd pass this via CrewAI's input variables
-                research_task.description = f"Search for the latest critical CVEs related to '{topic}'. Provide short bullet points."
-                
-                # Run the Crew
-                # Note: CrewAI's memory is enabled in the agents.py definition
-                result = threat_crew.kickoff(inputs={'topic': topic})
-                
-                # Display result
-                st.session_state.chat_history.append({"topic": topic, "result": result})
-                
-                st.success("Briefing Generated!")
-                st.markdown("### 📋 Cyber Threat Briefing")
-                st.write(result)
-                
+                with st.spinner("Agents are collaborating..."):
+                    # Update Task descriptions with the user topic
+                    research_task.description = f"Search for the latest critical CVEs related to '{topic}'. Provide short bullet points."
+                    
+                    # Run the Crew
+                    result = threat_crew.kickoff(inputs={'topic': topic})
+                    
+                    st.session_state.chat_history.append({"topic": topic, "result": result})
+                    st.session_state.agent_status = {"vega": "Done", "orion": "Done"}
+                    st.success("Briefing Generated!")
+                    
             except Exception as e:
                 st.error(f"An error occurred: {e}. The agents may have hit the iteration limit or API limit.")
+                st.session_state.agent_status = {"vega": "Failed", "orion": "Failed"}
             finally:
                 st.session_state.running_crew = False
+                st.rerun()
 
-    # --- History & Status ---
+    # --- Status Display & History ---
     if st.session_state.chat_history:
         st.divider()
-        st.subheader("Previous Briefings")
+        st.subheader("Threat Briefing History")
         for entry in reversed(st.session_state.chat_history):
             with st.expander(f"Topic: {entry['topic']}"):
                 st.write(entry['result'])
+                
+    # End Chat / Clear Button at the bottom
+    st.divider()
+    if st.button("End Chat & Clear Memory", type="secondary"):
+        st.session_state.chat_history = []
+        st.session_state.agent_status = {"vega": "Idle", "orion": "Idle"}
+        st.success("Chat ended and memory cleared.")
+        time.sleep(1)
+        st.rerun()
