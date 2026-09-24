@@ -19,12 +19,13 @@ def get_llm():
     )
 
 # ============================================================
-# OUTPUT SCHEMA & GUARDRAILS
+# OUTPUT SCHEMA & GUARDRAILS (6-Line Schema including Severity)
 # ============================================================
 OUTPUT_SCHEMA = """
-For EACH CVE explicitly returned by the tool, output EXACTLY these 5 lines:
+For EACH CVE explicitly returned by the tool, output EXACTLY these 6 lines:
 
 CVE ID: <exact id from tool output ONLY>
+Severity: <CVSS score or severity level from tool>
 Summary: <one line, max 15 words>
 Impact: <one line, max 12 words>
 Exploit PoC: <public / not public / link>
@@ -35,6 +36,7 @@ CRITICAL GUARDRAILS:
 2. If the tool output contains no matching CVE records, output EXACTLY:
 
 CVE ID: N/A
+Severity: N/A
 Summary: No matching official CVE records found for this query in NVD.
 Impact: None identified.
 Exploit PoC: not public
@@ -64,7 +66,7 @@ def fetch_cve_data(topic: str) -> str:
             "CVE-2025-15001": {
                 "id": "CVE-2025-15001",
                 "published": "2026-01-05",
-                "cvss": "9.8",
+                "cvss": "CVSS 9.8",
                 "description": "FS Registration Password plugin for WordPress up to 1.0.1 is vulnerable to unauthenticated privilege escalation via password reset."
             }
         }
@@ -100,7 +102,7 @@ def fetch_cve_data(topic: str) -> str:
                 return (
                     f"CVE ID: {fb['id']}\n"
                     f"Published: {fb['published']}\n"
-                    f"Severity: CVSS {fb['cvss']}\n"
+                    f"Severity: {fb['cvss']}\n"
                     f"Description: {fb['description']}\n"
                 )
 
@@ -111,7 +113,7 @@ def fetch_cve_data(topic: str) -> str:
                 return (
                     f"CVE ID: {fb['id']}\n"
                     f"Published: {fb['published']}\n"
-                    f"Severity: CVSS {fb['cvss']}\n"
+                    f"Severity: {fb['cvss']}\n"
                     f"Description: {fb['description']}\n"
                 )
             return f"Error querying NIST NVD API for {cve_id}: {str(e)}"
@@ -226,7 +228,7 @@ def get_crew():
         goal="Fetch real vulnerability data exclusively from the NIST NVD database via nvd_cve_lookup.",
         backstory=(
             "You are a strict threat intelligence researcher. You do not generate or guess CVE IDs. "
-            "You always pass the target keyword or CVE ID to nvd_cve_lookup and return raw API output."
+            "You always pass the target keyword or CVE ID to nvd_cve_lookup and return raw API output including CVSS scores."
         ),
         tools=[fetch_cve_data],
         verbose=True,
@@ -236,10 +238,10 @@ def get_crew():
 
     orion = Agent(
         role="Risk Reporter",
-        goal="Format official NIST NVD vulnerability records into the precise 5-line schema without hallucinating.",
+        goal="Format official NIST NVD vulnerability records into the precise 6-line schema incorporating severity scores without hallucinating.",
         backstory=(
             "You are an executive risk editor. You strictly adhere to official data provided by Vega. "
-            "Under no circumstances will you invent fake IDs like CVE-2023-12345 or synthetic details. "
+            "Under no circumstances will you invent fake IDs or synthetic details. "
             "If Vega returns no records, you MUST output the N/A schema."
         ),
         verbose=True,
@@ -249,10 +251,10 @@ def get_crew():
 
     task_research = Task(
         description=(
-            "Use the 'nvd_cve_lookup' tool to retrieve live CVE details for topic: '{topic}'. "
+            "Use the 'nvd_cve_lookup' tool to retrieve live CVE details including CVSS scores for topic: '{topic}'. "
             "Pass the exact raw output from the tool to Orion without adding commentary."
         ),
-        expected_output="Raw NIST NVD CVE data string or clear non-found message.",
+        expected_output="Raw NIST NVD CVE data string including severity or clear non-found message.",
         agent=vega
     )
 
@@ -262,7 +264,7 @@ def get_crew():
             f"Format rules:\n{OUTPUT_SCHEMA}\n"
             f"Strictly do not output any 'Thought:' or internal reasoning text."
         ),
-        expected_output="A structured 5-line schema block per CVE or N/A fallback block.",
+        expected_output="A structured 6-line schema block per CVE or N/A fallback block.",
         agent=orion
     )
 
