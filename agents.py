@@ -94,7 +94,7 @@ def get_crew():
     llm = LLM(
     model="groq/openai/gpt-oss-20b",
     api_key=groq_key,
-    temperature=0.1,
+    temperature=0.0,  # Zero out temperature for strict schema adherence
     max_tokens=1024,          # increase from 500
     timeout=60,
     ) 
