@@ -1,6 +1,5 @@
 streamlit==1.40.0
-crewai==0.121.1
-crewai-tools==0.45.0
+crewai[tools]==0.121.1
 chromadb==1.5.4
 bcrypt>=4.1.0
 python-dotenv>=1.0.0
