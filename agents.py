@@ -1,6 +1,6 @@
 import os
 from crewai import Agent, Task, Crew, Process, LLM
-from crewai_tools import tool
+from crewai.tools import tool
 
 # --- GROQ LLM INITIALIZATION ---
 # Using the free Groq endpoint as requested [citation:4][citation:12]
