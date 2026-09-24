@@ -1,4 +1,5 @@
 import os
+import requests
 from crewai import Agent, Task, Crew, Process, LLM
 from crewai.tools import tool
 
@@ -15,29 +16,56 @@ RULES:
 """
 
 # ============================================================
-# NVD CVE LOOKUP TOOL
+# LIVE NVD CVE LOOKUP TOOL
 # ============================================================
 
 @tool("nvd_cve_lookup")
 def fetch_cve_data(query: str) -> str:
     """
-    Look up CVE information related to a cybersecurity topic.
+    Look up live CVE information from the NIST National Vulnerability Database API.
     """
-    return (
-        f"NVD results for '{query}':\n\n"
-        "CVE-2026-1234 | "
-        "CVSS 9.8 Critical | "
-        "Arbitrary file upload in WordPress plugin X | "
-        "PoC: public on GitHub.\n\n"
-        "CVE-2026-5678 | "
-        "CVSS 7.5 High | "
-        "Authentication bypass in plugin Y | "
-        "PoC: not public.\n\n"
-        "CVE-2026-9012 | "
-        "CVSS 8.1 High | "
-        "Stored XSS in plugin Z | "
-        "PoC: Exploit-DB #51234."
-    )
+    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={query}"
+    
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            vulnerabilities = data.get("vulnerabilities", [])[:3]  # Take top 3 CVEs
+            
+            if not vulnerabilities:
+                return f"No official CVE results found for topic '{query}'."
+
+            cve_summary = [f"NVD Live API results for '{query}':\n"]
+            for item in vulnerabilities:
+                cve = item.get("cve", {})
+                cve_id = cve.get("id", "N/A")
+                
+                # Fetch English description
+                descriptions = cve.get("descriptions", [])
+                desc_text = "No description available."
+                for d in descriptions:
+                    if d.get("lang") == "en":
+                        desc_text = d.get("value", "")
+                        break
+                
+                # Fetch CVSS severity score if available
+                metrics = cve.get("metrics", {})
+                cvss_score = "N/A"
+                if "cvssMetricV31" in metrics:
+                    cvss_score = metrics["cvssMetricV31"][0]["cvssData"].get("baseScore", "N/A")
+                elif "cvssMetricV2" in metrics:
+                    cvss_score = metrics["cvssMetricV2"][0]["cvssData"].get("baseScore", "N/A")
+
+                cve_summary.append(
+                    f"{cve_id} | CVSS: {cvss_score} | Description: {desc_text[:120]}..."
+                )
+                
+            return "\n\n".join(cve_summary)
+        else:
+            return f"NVD API returned status code {response.status_code}."
+            
+    except Exception as e:
+        return f"Error querying NVD API: {str(e)}"
 
 # ============================================================
 # OUTPUT FORMAT
@@ -77,7 +105,7 @@ def get_crew():
         model="groq/openai/gpt-oss-120b",
         api_key=groq_key,
         base_url="https://api.groq.com/openai/v1",
-        temperature=0.0,  # Enforces deterministic execution
+        temperature=0.0,
         max_tokens=1024,
         timeout=60,
     )
@@ -87,7 +115,7 @@ def get_crew():
     # --------------------------------------------------------
     researcher = Agent(
         role="CVE Researcher",
-        goal="Fetch vulnerability data using the nvd_cve_lookup tool.",
+        goal="Fetch live vulnerability data using the nvd_cve_lookup tool.",
         backstory=(
             "You are Vega, a vulnerability researcher. "
             "Your sole objective is to call the nvd_cve_lookup tool for the given topic "
@@ -97,7 +125,7 @@ def get_crew():
         verbose=False,
         allow_delegation=False,
         llm=llm,
-        function_calling_llm=llm,  # Enforces structured function-calling schema
+        function_calling_llm=llm,
         tools=[fetch_cve_data],
         max_iter=3,
         memory=False,
