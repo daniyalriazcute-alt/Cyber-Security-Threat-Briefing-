@@ -4,9 +4,11 @@ import bcrypt
 def init_db():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
+    # Added email column to the schema
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
             password TEXT NOT NULL
         )
     ''')
@@ -20,12 +22,12 @@ def hash_password(password: str) -> str:
 def check_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
-def register_user(username, password):
+def register_user(username, email, password):
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO users (username, password) VALUES (?, ?)", 
-                  (username, hash_password(password)))
+        c.execute("INSERT INTO users (username, email, password) VALUES (?, ?, ?)", 
+                  (username, email, hash_password(password)))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
