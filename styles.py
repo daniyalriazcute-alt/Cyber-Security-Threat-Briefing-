@@ -10,7 +10,6 @@ def load_css(theme="dark"):
         input_bg = "#2D2D2D"
         login_bg = "#1E1E1E"
         orange_accent = "#FF8C00"
-        muted_text = "#AAAAAA"
     else:
         bg_color = "#F5F7FA"
         text_color = "#333333"
@@ -19,21 +18,17 @@ def load_css(theme="dark"):
         input_bg = "#FFFFFF"
         login_bg = "#FFFFFF"
         orange_accent = "#FF8C00"
-        muted_text = "#666666"
 
     st.markdown(f"""
     <style>
-        /* Base App */
         .stApp {{
             background-color: {bg_color};
             color: {text_color};
         }}
 
-        /* Hide Streamlit default header/footer */
         header {{visibility: hidden;}}
         footer {{visibility: hidden;}}
 
-        /* Login box wrapper */
         div[data-testid="stVerticalBlock"] > div:has(div.login-box) {{
             background: {login_bg};
             border: 1px solid {card_border};
@@ -42,7 +37,6 @@ def load_css(theme="dark"):
             box-shadow: 0 4px 15px rgba(0,0,0,0.4);
         }}
 
-        /* Tabs (Login / Register) */
         .stTabs [data-baseweb="tab-list"] {{
             gap: 24px;
             justify-content: center;
@@ -58,22 +52,24 @@ def load_css(theme="dark"):
             border-bottom: 2px solid {orange_accent} !important;
         }}
 
-        /* Primary buttons (LOGIN, CREATE ACCOUNT, Generate) */
-        div.stButton > button[kind="primary"],
+        /* ---- ALL BUTTONS ORANGE (primary + secondary + form submit) ---- */
+        div.stButton > button,
         div.stFormSubmitButton > button {{
-            background-color: {orange_accent};
-            color: #FFFFFF;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
+            background-color: {orange_accent} !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            border-radius: 6px !important;
+            font-weight: bold !important;
+            padding: 8px 20px !important;
         }}
-        div.stButton > button[kind="primary"]:hover,
+        div.stButton > button:hover,
         div.stFormSubmitButton > button:hover {{
-            background-color: #E67E00;
-            color: #FFFFFF;
+            background-color: #E67E00 !important;
+            color: #FFFFFF !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(255, 140, 0, 0.4);
         }}
 
-        /* Red warning text */
         .company-warning {{
             color: #FF4B4B;
             font-size: 0.85rem;
@@ -83,7 +79,6 @@ def load_css(theme="dark"):
             letter-spacing: 0.5px;
         }}
 
-        /* Agent cards */
         .agent-card {{
             background-color: {card_bg};
             border: 1px solid {card_border};
@@ -93,7 +88,6 @@ def load_css(theme="dark"):
             text-align: center;
         }}
 
-        /* Agent avatar image */
         .agent-avatar {{
             width: 90px;
             height: 90px;
@@ -104,7 +98,6 @@ def load_css(theme="dark"):
             object-fit: cover;
         }}
 
-        /* Status badges */
         .badge-idle {{
             background-color: #555555;
             color: #FFFFFF;
@@ -142,7 +135,6 @@ def load_css(theme="dark"):
             display: inline-block;
         }}
 
-        /* Input fields */
         .stTextInput > div > div > input {{
             background-color: {input_bg};
             color: {text_color};
@@ -150,18 +142,22 @@ def load_css(theme="dark"):
             border-radius: 6px;
         }}
 
-        /* Sidebar */
         div[data-testid="stSidebar"] {{
             background-color: {card_bg};
             border-right: 1px solid {card_border};
         }}
 
-        /* Paragraph text */
-        p {{
+        p, h1, h2, h3, h4, h5, h6 {{
             color: {text_color};
         }}
-        h1, h2, h3, h4, h5, h6 {{
-            color: {text_color};
+
+        /* Theme toggle row styling */
+        .theme-row {{
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: -10px;
         }}
     </style>
     """, unsafe_allow_html=True)
