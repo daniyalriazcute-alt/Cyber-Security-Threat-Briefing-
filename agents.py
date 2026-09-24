@@ -95,7 +95,7 @@ def get_crew():
     model="groq/openai/gpt-oss-20b",
     api_key=groq_key,
     temperature=0.1,
-    max_tokens=300,          # increase from 500
+    max_tokens=1024,          # increase from 500
     timeout=60,
     reasoning_effort="low",   # minimize thinking tokens
     include_reasoning=False,  # CRITICAL: don't split reasoning from content
