@@ -1,3 +1,9 @@
+# --- SQLITE3 PATCH (must be first, before any other imports) ---
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# ----------------------------------------------------------------
+
 import streamlit as st
 import os
 import time
@@ -35,7 +41,7 @@ ORION_IMG = img_to_base64("./assets/orion.png")
 
 
 # ============================================================
-# BRIEFING PARSER (turns text output into a table)
+# BRIEFING PARSER
 # ============================================================
 def parse_briefing(text):
     """Parse the 5-line schema per CVE into a DataFrame."""
@@ -219,14 +225,11 @@ else:
                 )
                 result = threat_crew.kickoff(inputs={'topic': topic_value})
 
-            # --- Extract clean final text ---
             raw = str(result.raw) if hasattr(result, 'raw') else str(result)
-            # Strip excessive blank lines
             final_text = "\n".join(
                 line for line in raw.splitlines() if line.strip()
             )
 
-            # --- Capture token usage ---
             if hasattr(result, 'token_usage') and result.token_usage:
                 tu = result.token_usage
                 st.session_state.last_usage = (
@@ -250,11 +253,11 @@ else:
             time.sleep(0.5)
             st.rerun()
 
-    # --- Token Usage Indicator ---
+    # --- Token Usage ---
     if st.session_state.last_usage:
         st.caption(f"📊 Last run: {st.session_state.last_usage}")
 
-    # --- Briefing History ---
+    # --- History ---
     if st.session_state.chat_history:
         st.divider()
         st.subheader("Threat Briefing History")
@@ -262,16 +265,11 @@ else:
             with st.expander(f"Topic: {entry['topic']}", expanded=True):
                 df = parse_briefing(entry['result'])
                 if not df.empty:
-                    st.dataframe(
-                        df,
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    st.dataframe(df, use_container_width=True, hide_index=True)
                 else:
-                    # Fallback: show raw text if parsing fails
                     st.text(entry['result'])
 
-    # --- End Chat & Logout Buttons ---
+    # --- End Chat & Logout ---
     st.divider()
     btn_col1, btn_col2 = st.columns(2)
     with btn_col1:
