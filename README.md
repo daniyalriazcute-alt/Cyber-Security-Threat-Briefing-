@@ -39,4 +39,3 @@ The system combines **long-term memory (ChromaDB)**, **secure authentication (SQ
 
 ---
 
-## 🧠 System Architecture
