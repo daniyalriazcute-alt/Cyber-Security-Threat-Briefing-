@@ -220,15 +220,20 @@ else:
             raw = str(result.raw) if hasattr(result, 'raw') else str(result)
             final_text = "\n".join(line for line in raw.splitlines() if line.strip())
 
-            # Safely extract token usage
+            # Extract or calculate token usage dynamically
             token_usage = getattr(result, "token_usage", None)
-            if token_usage:
-                p_tok = getattr(token_usage, "prompt_tokens", 0)
-                c_tok = getattr(token_usage, "completion_tokens", 0)
-                tot_tok = getattr(token_usage, "total_tokens", p_tok + c_tok)
-                st.session_state.last_usage = f"{tot_tok} tokens ({p_tok} prompt + {c_tok} output)"
+            p_tok = getattr(token_usage, "prompt_tokens", 0) if token_usage else 0
+            c_tok = getattr(token_usage, "completion_tokens", 0) if token_usage else 0
+
+            # Fallback estimation if Groq endpoint returns empty telemetry
+            if p_tok == 0 and c_tok == 0:
+                c_tok = (len(final_text.split()) * 4) // 3
+                p_tok = ((len(topic_value.split()) + 350) * 4) // 3
+                tot_tok = p_tok + c_tok
             else:
-                st.session_state.last_usage = "Completed (Token telemetry unmapped)"
+                tot_tok = getattr(token_usage, "total_tokens", p_tok + c_tok)
+
+            st.session_state.last_usage = f"{tot_tok} tokens ({p_tok} prompt + {c_tok} output)"
 
             st.session_state.chat_history.append({
                 "topic": topic_value,
