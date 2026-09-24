@@ -74,7 +74,7 @@ def get_crew():
     # Groq LLM (Temperature set to 0.0 for reliable tool calling)
     # --------------------------------------------------------
     llm = LLM(
-        model="groq/llama-3.3-70b-versatile",
+        model="groq/openai/gpt-oss-120b",
         api_key=groq_key,
         temperature=0.0,
         max_tokens=1024,
