@@ -71,12 +71,13 @@ def get_crew():
         )
 
     # --------------------------------------------------------
-    # Groq LLM (Temperature set to 0.0 for reliable tool calling)
+    # LLM Initialization for gpt-oss-120b on Groq
     # --------------------------------------------------------
     llm = LLM(
         model="groq/openai/gpt-oss-120b",
         api_key=groq_key,
-        temperature=0.0,
+        base_url="https://api.groq.com/openai/v1",
+        temperature=0.0,  # Enforces deterministic execution
         max_tokens=1024,
         timeout=60,
     )
@@ -86,16 +87,17 @@ def get_crew():
     # --------------------------------------------------------
     researcher = Agent(
         role="CVE Researcher",
-        goal="Fetch CVE data using the nvd_cve_lookup tool.",
+        goal="Fetch vulnerability data using the nvd_cve_lookup tool.",
         backstory=(
             "You are Vega, a vulnerability researcher. "
-            "Your job is to run the nvd_cve_lookup tool for the given topic "
-            "and output the raw findings without conversational filler.\n"
+            "Your sole objective is to call the nvd_cve_lookup tool for the given topic "
+            "and pass the raw output to the next agent without conversational preamble.\n"
             + SECURITY_GUARDRAILS
         ),
         verbose=False,
         allow_delegation=False,
         llm=llm,
+        function_calling_llm=llm,  # Enforces structured function-calling schema
         tools=[fetch_cve_data],
         max_iter=3,
         memory=False,
@@ -106,11 +108,11 @@ def get_crew():
     # --------------------------------------------------------
     reporter = Agent(
         role="Risk Reporter",
-        goal="Convert vulnerability findings into the exact 5-line CVE schema.",
+        goal="Format raw CVE output into the mandatory 5-line schema.",
         backstory=(
-            "You are Orion, a concise risk reporter. "
-            "Format the raw CVE data provided by Vega according to the required schema. "
-            "Do not perform additional research or invent details.\n"
+            "You are Orion, a risk analyst. "
+            "Format the raw CVE data provided by Vega according to the output schema. "
+            "Do not call tools or perform additional research.\n"
             + SECURITY_GUARDRAILS
         ),
         verbose=False,
@@ -122,26 +124,23 @@ def get_crew():
     )
 
     # --------------------------------------------------------
-    # RESEARCH TASK
+    # TASKS
     # --------------------------------------------------------
     research_task = Task(
         description=(
-            "Execute the tool nvd_cve_lookup with query parameter '{topic}'. "
-            "Return the raw vulnerability details retrieved."
+            "Call the tool nvd_cve_lookup with query parameter '{topic}'. "
+            "Return the exact string provided by the tool."
         ),
-        expected_output="Raw text output returned by the nvd_cve_lookup tool.",
+        expected_output="Raw vulnerability records returned by nvd_cve_lookup.",
         agent=researcher,
     )
 
-    # --------------------------------------------------------
-    # REPORT TASK
-    # --------------------------------------------------------
     report_task = Task(
         description=(
-            "Using ONLY the raw research findings, create the final briefing.\n\n"
+            "Transform the research findings into the required format:\n\n"
             + OUTPUT_SCHEMA
         ),
-        expected_output="A structured briefing containing 2-3 CVE entries with exactly five lines per CVE.",
+        expected_output="Structured briefing following the 5-line schema per CVE.",
         agent=reporter,
         context=[research_task],
     )
