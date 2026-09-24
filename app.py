@@ -213,18 +213,22 @@ else:
     if st.session_state.agent_status['vega'] == "Writing":
         topic_value = st.session_state.get('threat_topic', 'Recent Critical Vulnerabilities')
         try:
-            with st.spinner("Agents are collaborating..."):
+            with st.spinner("Agents are collaborating with NIST NVD..."):
                 crew = get_crew()
                 result = crew.kickoff(inputs={'topic': topic_value})
 
             raw = str(result.raw) if hasattr(result, 'raw') else str(result)
             final_text = "\n".join(line for line in raw.splitlines() if line.strip())
 
-            if hasattr(result, 'token_usage') and result.token_usage:
-                tu = result.token_usage
-                st.session_state.last_usage = (
-                    f"{tu.total_tokens} tokens ({tu.prompt_tokens} prompt + {tu.completion_tokens} output)"
-                )
+            # Safely extract token usage
+            token_usage = getattr(result, "token_usage", None)
+            if token_usage:
+                p_tok = getattr(token_usage, "prompt_tokens", 0)
+                c_tok = getattr(token_usage, "completion_tokens", 0)
+                tot_tok = getattr(token_usage, "total_tokens", p_tok + c_tok)
+                st.session_state.last_usage = f"{tot_tok} tokens ({p_tok} prompt + {c_tok} output)"
+            else:
+                st.session_state.last_usage = "Completed (Token telemetry unmapped)"
 
             st.session_state.chat_history.append({
                 "topic": topic_value,
@@ -238,7 +242,7 @@ else:
             st.session_state.error_trace = traceback.format_exc()
             st.session_state.agent_status = {"vega": "Failed", "orion": "Failed"}
 
-    # --- Token Usage ---
+    # --- Token Usage Display ---
     if st.session_state.last_usage:
         st.caption(f"📊 Last run: {st.session_state.last_usage}")
 
