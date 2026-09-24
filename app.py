@@ -3,6 +3,7 @@ import os
 import time
 import base64
 import traceback
+import pandas as pd
 from dotenv import load_dotenv
 from auth_utils import init_db, register_user, login_user
 from agents import threat_crew, research_task, report_task
@@ -10,9 +11,16 @@ from styles import load_css
 
 load_dotenv()
 init_db()
-st.set_page_config(page_title="Cyber Threat Briefing", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(
+    page_title="Cyber Threat Briefing",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
 
+# ============================================================
+# IMAGE LOADER (base64)
+# ============================================================
 def img_to_base64(path):
     try:
         with open(path, "rb") as f:
@@ -26,6 +34,33 @@ VEGA_IMG = img_to_base64("./assets/vega.png")
 ORION_IMG = img_to_base64("./assets/orion.png")
 
 
+# ============================================================
+# BRIEFING PARSER (turns text output into a table)
+# ============================================================
+def parse_briefing(text):
+    """Parse the 5-line schema per CVE into a DataFrame."""
+    rows = []
+    current = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("CVE ID:"):
+            if current:
+                rows.append(current)
+            current = {"CVE ID": line.replace("CVE ID:", "").strip()}
+        elif ":" in line and current:
+            key, _, val = line.partition(":")
+            key = key.strip()
+            val = val.strip()
+            if key and val:
+                current[key] = val
+    if current:
+        rows.append(current)
+    return pd.DataFrame(rows)
+
+
+# ============================================================
+# SESSION STATE
+# ============================================================
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'theme' not in st.session_state:
@@ -36,11 +71,15 @@ if 'agent_status' not in st.session_state:
     st.session_state.agent_status = {"vega": "Idle", "orion": "Idle"}
 if 'username' not in st.session_state:
     st.session_state.username = ""
+if 'last_usage' not in st.session_state:
+    st.session_state.last_usage = ""
 
 load_css(st.session_state.theme)
 
 
-# --- LOGIN VIEW ---
+# ============================================================
+# LOGIN / REGISTRATION VIEW
+# ============================================================
 if not st.session_state.logged_in:
     col1, col2, col3 = st.columns([1, 2, 1])
 
@@ -52,10 +91,17 @@ if not st.session_state.logged_in:
         with tab1:
             st.subheader("Log in")
             with st.form("login_form"):
-                username = st.text_input("Username", placeholder="Enter your username")
-                password = st.text_input("Password", type="password", placeholder="Enter your password")
+                username = st.text_input(
+                    "Username", placeholder="Enter your username"
+                )
+                password = st.text_input(
+                    "Password", type="password", placeholder="Enter your password"
+                )
                 st.markdown(
-                    '<div class="company-warning">⚠️ Demo Project: Do not use real credentials. This is a security research prototype.</div>',
+                    '<div class="company-warning">'
+                    '⚠️ Demo Project: Do not use real credentials. '
+                    'This is a security research prototype.'
+                    '</div>',
                     unsafe_allow_html=True
                 )
                 submitted = st.form_submit_button("LOGIN", use_container_width=True)
@@ -75,10 +121,15 @@ if not st.session_state.logged_in:
                 new_pass = st.text_input("New Password", type="password")
                 confirm_pass = st.text_input("Confirm Password", type="password")
                 st.markdown(
-                    '<div class="company-warning">⚠️ This system is for authorized use only. Unauthorized access is prohibited.</div>',
+                    '<div class="company-warning">'
+                    '⚠️ This system is for authorized use only. '
+                    'Unauthorized access is prohibited.'
+                    '</div>',
                     unsafe_allow_html=True
                 )
-                reg_submitted = st.form_submit_button("CREATE ACCOUNT", use_container_width=True)
+                reg_submitted = st.form_submit_button(
+                    "CREATE ACCOUNT", use_container_width=True
+                )
                 if reg_submitted:
                     if new_pass != confirm_pass:
                         st.error("Passwords do not match.")
@@ -91,18 +142,24 @@ if not st.session_state.logged_in:
                             st.success("Account created! Please log in.")
                         else:
                             st.error("Username already exists.")
+
         st.markdown('</div>', unsafe_allow_html=True)
 
 
-# --- MAIN DASHBOARD ---
+# ============================================================
+# MAIN DASHBOARD VIEW
+# ============================================================
 else:
-    # Top row: title + theme toggle on the right
+    # --- Header with Theme Toggle ---
     title_col, toggle_col = st.columns([4, 1])
     with title_col:
         st.title("Cyber Threat Briefing")
     with toggle_col:
-        st.write("")  # spacer
-        theme_on = st.toggle("🌙 Dark Mode", value=(st.session_state.theme == "dark"))
+        st.write("")
+        theme_on = st.toggle(
+            "🌙 Dark Mode",
+            value=(st.session_state.theme == "dark")
+        )
         if theme_on != (st.session_state.theme == "dark"):
             st.session_state.theme = "dark" if theme_on else "light"
             st.rerun()
@@ -134,7 +191,7 @@ else:
 
     st.divider()
 
-    # --- Input ---
+    # --- Threat Focus Input ---
     st.subheader("Threat Focus")
     topic = st.text_input(
         "Enter a topic (e.g., 'Microsoft Exchange', 'Apache Log4j'):",
@@ -149,22 +206,43 @@ else:
             st.session_state.agent_status = {"vega": "Writing", "orion": "Idle"}
             st.rerun()
 
-    # --- Run crew ---
+    # --- Run the Crew ---
     if st.session_state.agent_status['vega'] == "Writing":
-        topic_value = st.session_state.get('threat_topic', 'Recent Critical Vulnerabilities')
+        topic_value = st.session_state.get(
+            'threat_topic', 'Recent Critical Vulnerabilities'
+        )
         try:
             with st.spinner("Agents are collaborating..."):
                 research_task.description = (
-                    f"Search for the latest critical CVEs related to '{topic_value}'. "
-                    f"Provide short bullet points."
+                    f"Use the NVD CVE Lookup tool to find 2-3 critical CVEs "
+                    f"related to '{topic_value}'. Extract raw facts only."
                 )
                 result = threat_crew.kickoff(inputs={'topic': topic_value})
 
-            st.session_state.chat_history.append({"topic": topic_value, "result": result})
+            # --- Extract clean final text ---
+            raw = str(result.raw) if hasattr(result, 'raw') else str(result)
+            # Strip excessive blank lines
+            final_text = "\n".join(
+                line for line in raw.splitlines() if line.strip()
+            )
+
+            # --- Capture token usage ---
+            if hasattr(result, 'token_usage') and result.token_usage:
+                tu = result.token_usage
+                st.session_state.last_usage = (
+                    f"{tu.total_tokens} tokens "
+                    f"({tu.prompt_tokens} prompt + "
+                    f"{tu.completion_tokens} output)"
+                )
+
+            st.session_state.chat_history.append({
+                "topic": topic_value,
+                "result": final_text
+            })
             st.session_state.agent_status = {"vega": "Done", "orion": "Done"}
             st.success("Briefing Generated!")
+
         except Exception as e:
-            # ---- SHOW THE FULL ERROR SO WE CAN DIAGNOSE ----
             st.error("❌ Agent execution failed.")
             st.code(traceback.format_exc(), language="python")
             st.session_state.agent_status = {"vega": "Failed", "orion": "Failed"}
@@ -172,21 +250,35 @@ else:
             time.sleep(0.5)
             st.rerun()
 
-    # --- History ---
+    # --- Token Usage Indicator ---
+    if st.session_state.last_usage:
+        st.caption(f"📊 Last run: {st.session_state.last_usage}")
+
+    # --- Briefing History ---
     if st.session_state.chat_history:
         st.divider()
         st.subheader("Threat Briefing History")
         for entry in reversed(st.session_state.chat_history):
-            with st.expander(f"Topic: {entry['topic']}"):
-                st.write(entry['result'])
+            with st.expander(f"Topic: {entry['topic']}", expanded=True):
+                df = parse_briefing(entry['result'])
+                if not df.empty:
+                    st.dataframe(
+                        df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                else:
+                    # Fallback: show raw text if parsing fails
+                    st.text(entry['result'])
 
-    # --- End Chat + Logout ---
+    # --- End Chat & Logout Buttons ---
     st.divider()
     btn_col1, btn_col2 = st.columns(2)
     with btn_col1:
         if st.button("End Chat & Clear Memory", use_container_width=True):
             st.session_state.chat_history = []
             st.session_state.agent_status = {"vega": "Idle", "orion": "Idle"}
+            st.session_state.last_usage = ""
             st.success("Chat ended and memory cleared.")
             time.sleep(1)
             st.rerun()
@@ -196,4 +288,5 @@ else:
             st.session_state.chat_history = []
             st.session_state.username = ""
             st.session_state.agent_status = {"vega": "Idle", "orion": "Idle"}
+            st.session_state.last_usage = ""
             st.rerun()
