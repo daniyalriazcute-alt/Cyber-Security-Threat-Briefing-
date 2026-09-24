@@ -11,7 +11,7 @@ os.environ["OPENAI_BASE_URL"] = "https://api.groq.com/openai/v1"
 
 # --- LLM (strict output limit) ---
 llm = LLM(
-    model="groq/openai/gpt-oss-120b",
+    model="groq/llama-3.3-70b-versatile",
     api_key=GROQ_KEY,
     base_url="https://api.groq.com/openai/v1",
     temperature=0.1,
