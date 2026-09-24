@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import time
+import base64
 from dotenv import load_dotenv
 from auth_utils import init_db, register_user, login_user
 from agents import threat_crew, research_task, report_task
@@ -13,9 +14,28 @@ load_dotenv()
 init_db()
 st.set_page_config(page_title="Cyber Threat Briefing", layout="wide", initial_sidebar_state="collapsed")
 
-# --- IMAGE PATHS ---
-VEGA_IMG = "./assets/vega.png"
-ORION_IMG = "./assets/orion.png"
+
+# --- IMAGE LOADER (base64) ---
+def img_to_base64(path):
+    """Convert image file to base64 string for inline HTML embedding."""
+    try:
+        with open(path, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+        return f"data:image/png;base64,{data}"
+    except FileNotFoundError:
+        return ""
+
+
+# --- DEBUG (temporary) ---
+if os.path.exists("./assets"):
+    st.sidebar.write("**Debug — Files found:**")
+    st.sidebar.write(os.listdir("./assets"))
+else:
+    st.sidebar.write("**Debug:** assets folder NOT FOUND")
+
+VEGA_IMG = img_to_base64("./assets/vega.png")
+ORION_IMG = img_to_base64("./assets/orion.png")
+
 
 # --- SESSION STATE ---
 if 'logged_in' not in st.session_state:
