@@ -17,12 +17,12 @@ from styles import load_css
 
 load_dotenv()
 init_db()
+
 st.set_page_config(
     page_title="Cyber Threat Briefing",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-
 
 # ============================================================
 # IMAGE LOADER (base64)
@@ -35,10 +35,8 @@ def img_to_base64(path):
     except FileNotFoundError:
         return ""
 
-
 VEGA_IMG = img_to_base64("./assets/vega.png")
 ORION_IMG = img_to_base64("./assets/orion.png")
-
 
 # ============================================================
 # BRIEFING PARSER
@@ -63,7 +61,6 @@ def parse_briefing(text):
         rows.append(current)
     return pd.DataFrame(rows)
 
-
 # ============================================================
 # SESSION STATE
 # ============================================================
@@ -84,7 +81,6 @@ if 'error_trace' not in st.session_state:
 
 load_css(st.session_state.theme)
 
-
 # ============================================================
 # LOGIN / REGISTRATION VIEW
 # ============================================================
@@ -93,18 +89,13 @@ if not st.session_state.logged_in:
 
     with col2:
         st.markdown('<div class="login-box">', unsafe_allow_html=True)
-
         tab1, tab2 = st.tabs(["Login", "Register"])
 
         with tab1:
             st.subheader("Log in")
             with st.form("login_form"):
-                username = st.text_input(
-                    "Username", placeholder="Enter your username"
-                )
-                password = st.text_input(
-                    "Password", type="password", placeholder="Enter your password"
-                )
+                username = st.text_input("Username", placeholder="Enter your username")
+                password = st.text_input("Password", type="password", placeholder="Enter your password")
                 st.markdown(
                     '<div class="company-warning">'
                     '⚠️ Demo Project: Do not use real credentials. '
@@ -135,9 +126,7 @@ if not st.session_state.logged_in:
                     '</div>',
                     unsafe_allow_html=True
                 )
-                reg_submitted = st.form_submit_button(
-                    "CREATE ACCOUNT", use_container_width=True
-                )
+                reg_submitted = st.form_submit_button("CREATE ACCOUNT", use_container_width=True)
                 if reg_submitted:
                     if new_pass != confirm_pass:
                         st.error("Passwords do not match.")
@@ -153,7 +142,6 @@ if not st.session_state.logged_in:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-
 # ============================================================
 # MAIN DASHBOARD VIEW
 # ============================================================
@@ -164,10 +152,7 @@ else:
         st.title("Cyber Threat Briefing")
     with toggle_col:
         st.write("")
-        theme_on = st.toggle(
-            "🌙 Dark Mode",
-            value=(st.session_state.theme == "dark")
-        )
+        theme_on = st.toggle("🌙 Dark Mode", value=(st.session_state.theme == "dark"))
         if theme_on != (st.session_state.theme == "dark"):
             st.session_state.theme = "dark" if theme_on else "light"
             st.rerun()
@@ -199,7 +184,7 @@ else:
 
     st.divider()
 
-    # --- Show persistent error trace (survives reruns) ---
+    # --- Show persistent error trace ---
     if st.session_state.error_trace:
         st.error("❌ Agent execution failed. Full traceback below:")
         st.code(st.session_state.error_trace, language="python")
@@ -224,27 +209,21 @@ else:
             st.session_state.agent_status = {"vega": "Writing", "orion": "Idle"}
             st.rerun()
 
-    # --- Run the Crew ---
+    # --- Run Crew Process ---
     if st.session_state.agent_status['vega'] == "Writing":
-        topic_value = st.session_state.get(
-            'threat_topic', 'Recent Critical Vulnerabilities'
-        )
+        topic_value = st.session_state.get('threat_topic', 'Recent Critical Vulnerabilities')
         try:
             with st.spinner("Agents are collaborating..."):
                 crew = get_crew()
                 result = crew.kickoff(inputs={'topic': topic_value})
 
             raw = str(result.raw) if hasattr(result, 'raw') else str(result)
-            final_text = "\n".join(
-                line for line in raw.splitlines() if line.strip()
-            )
+            final_text = "\n".join(line for line in raw.splitlines() if line.strip())
 
             if hasattr(result, 'token_usage') and result.token_usage:
                 tu = result.token_usage
                 st.session_state.last_usage = (
-                    f"{tu.total_tokens} tokens "
-                    f"({tu.prompt_tokens} prompt + "
-                    f"{tu.completion_tokens} output)"
+                    f"{tu.total_tokens} tokens ({tu.prompt_tokens} prompt + {tu.completion_tokens} output)"
                 )
 
             st.session_state.chat_history.append({
@@ -256,10 +235,8 @@ else:
             st.rerun()
 
         except Exception:
-            # Store traceback in session state so it survives the rerun
             st.session_state.error_trace = traceback.format_exc()
             st.session_state.agent_status = {"vega": "Failed", "orion": "Failed"}
-            # Do NOT rerun here — let the traceback display
 
     # --- Token Usage ---
     if st.session_state.last_usage:
