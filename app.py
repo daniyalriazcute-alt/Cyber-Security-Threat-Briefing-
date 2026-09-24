@@ -79,6 +79,8 @@ if 'username' not in st.session_state:
     st.session_state.username = ""
 if 'last_usage' not in st.session_state:
     st.session_state.last_usage = ""
+if 'error_trace' not in st.session_state:
+    st.session_state.error_trace = ""
 
 load_css(st.session_state.theme)
 
@@ -197,6 +199,15 @@ else:
 
     st.divider()
 
+    # --- Show persistent error trace (survives reruns) ---
+    if st.session_state.error_trace:
+        st.error("❌ Agent execution failed. Full traceback below:")
+        st.code(st.session_state.error_trace, language="python")
+        if st.button("Clear error"):
+            st.session_state.error_trace = ""
+            st.session_state.agent_status = {"vega": "Idle", "orion": "Idle"}
+            st.rerun()
+
     # --- Threat Focus Input ---
     st.subheader("Threat Focus")
     topic = st.text_input(
@@ -209,6 +220,7 @@ else:
         if not topic:
             st.warning("Please enter a topic.")
         else:
+            st.session_state.error_trace = ""
             st.session_state.agent_status = {"vega": "Writing", "orion": "Idle"}
             st.rerun()
 
@@ -240,15 +252,14 @@ else:
                 "result": final_text
             })
             st.session_state.agent_status = {"vega": "Done", "orion": "Done"}
-            st.success("Briefing Generated!")
-
-        except Exception as e:
-            st.error("❌ Agent execution failed.")
-            st.code(traceback.format_exc(), language="python")
-            st.session_state.agent_status = {"vega": "Failed", "orion": "Failed"}
-        finally:
             time.sleep(0.5)
             st.rerun()
+
+        except Exception:
+            # Store traceback in session state so it survives the rerun
+            st.session_state.error_trace = traceback.format_exc()
+            st.session_state.agent_status = {"vega": "Failed", "orion": "Failed"}
+            # Do NOT rerun here — let the traceback display
 
     # --- Token Usage ---
     if st.session_state.last_usage:
@@ -274,6 +285,7 @@ else:
             st.session_state.chat_history = []
             st.session_state.agent_status = {"vega": "Idle", "orion": "Idle"}
             st.session_state.last_usage = ""
+            st.session_state.error_trace = ""
             st.success("Chat ended and memory cleared.")
             time.sleep(1)
             st.rerun()
@@ -284,4 +296,5 @@ else:
             st.session_state.username = ""
             st.session_state.agent_status = {"vega": "Idle", "orion": "Idle"}
             st.session_state.last_usage = ""
+            st.session_state.error_trace = ""
             st.rerun()
